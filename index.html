@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Group Support Tracker</title>
+<style>
+  body{font-family:Arial, sans-serif; background:#f5f5f5; padding:15px; max-width:900px; margin:auto}
+  h2{color:#075E54}
+  .card{background:white; padding:15px; border-radius:10px; margin-bottom:15px; box-shadow:0 2px 5px rgba(0,0,0,0.1)}
+  input,button,select{padding:10px; margin:5px; border:1px solid #ccc; border-radius:5px}
+  button{background:#25D366; color:white; border:none; cursor:pointer; font-weight:bold}
+  button:hover{background:#128C7E}
+  .btn-edit{background:#3498db; padding:4px 8px; font-size:12px; margin-left:4px}
+  .btn-edit:hover{background:#2980b9}
+  .btn-save{background:#2ecc71; padding:4px 8px; font-size:12px; margin-left:4px}
+  .btn-save:hover{background:#27ae60}
+  table{width:100%; border-collapse:collapse; margin-top:10px; table-layout:fixed}
+  th,td{padding:6px; border-bottom:1px solid #ddd; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  th{background:#075E54; color:white}
+  .total{font-size:20px; font-weight:bold; color:#128C7E}
+  .active-bar{height:8px; background:#25D366; border-radius:4px}
+  #membersTable th:nth-child(1), #membersTable td:nth-child(1){width:6%}
+  #membersTable th:nth-child(2), #membersTable td:nth-child(2){width:30%}
+  #membersTable th:nth-child(3), #membersTable td:nth-child(3){width:20%}
+  #membersTable th:nth-child(4), #membersTable td:nth-child(4){width:10%}
+  #membersTable th:nth-child(5), #membersTable td:nth-child(5){width:18%}
+  #membersTable th:nth-child(6), #membersTable td:nth-child(6){width:8%}
+  #membersTable th:nth-child(7), #membersTable td:nth-child(7){width:8%}
+  .purpose-chart{margin:10px 0}
+  .purpose-chart .item{display:flex;align-items:center;margin:6px 0}
+  .purpose-chart .label{width:30%;font-weight:600}
+  .purpose-chart .barWrap{flex:1;background:#eee;border-radius:8px;overflow:hidden;margin-left:8px}
+  .purpose-chart .bar{height:14px;background:#25D366;width:0}
+  .purpose-chart .val{width:25%;text-align:right;font-weight:600}
+  .purpose-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+  .purpose-tab{background:#fff;color:#075E54;border:1px solid #075E54;border-radius:20px;padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 1px 3px rgba(0,0,0,0.08)}
+  .purpose-tab.selected{background:#075E54;color:#fff}
+  .purpose-tab:hover{background:#128C7E;color:#fff;border-color:#128C7E}
+  .inline-input{width:90%; padding:3px; margin:0}
+</style>
+</head>
+<body>
+
+<h2>📊 Group Support Display</h2>
+
+<div class="card">
+  <h3>0. Enter Password</h3>
+  <input id="passwordInput" type="password" placeholder="Enter password">
+  <button id="unlockButton" onclick="unlockApp()">Unlock</button>
+  <span id="unlockMessage"></span>
+</div>
+
+<div class="card" data-edit-card style="display:none">
+  <h3>1. Add Member</h3>
+  <input id="memberName" placeholder="Member Name">
+  <button onclick="addMember()">Add Member</button>
+</div>
+
+<div class="card" data-edit-card style="display:none">
+  <h3>2. Add New Support Case</h3>
+  <input id="newCaseName" placeholder="Case Name (e.g. KAP-NEW)">
+  <button onclick="addSupportCase()">Add Support Case</button>
+</div>
+
+<div class="card" data-edit-card style="display:none">
+  <h3>3. Record Contribution</h3>
+  <select id="contribMember"></select>
+  <input id="amount" type="number" placeholder="Amount KES">
+  <select id="purposeSelect"></select>
+  <button onclick="addContribution()">Add Contribution</button>
+</div>
+
+<div class="card">
+  <h3>4. Group Summary</h3>
+  <p class="total">Total Collected: KES <span id="totalGroup">0</span></p>
+  <p>Total Cases Count: <span id="totalCount">0</span></p>
+  <table id="membersTable">
+    <tr><th>No.</th><th>Member</th><th>Total Contributed</th><th>Times Contributed</th><th>Activeness</th><th>remarks</th><th>Action</th></tr>
+  </table>
+</div>
+
+<div class="card">
+  <h3>5. Support Cases</h3>
+  <div id="casesChartContainer" class="purpose-chart"></div>
+  <div id="casesTabsContainer" class="purpose-tabs"></div>
+  <div id="casesContainer"></div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js";
+import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBEuY5pQwgCFkxhAMvvZJBGEyyIlaYw4cw",
+  authDomain: "youthgroup-1b359.firebaseapp.com",
+  databaseURL: "https://youthgroup-1b359-default-rtdb.firebaseio.com",
+  projectId: "youthgroup-1b359",
+  storageBucket: "youthgroup-1b359.firebasestorage.app",
+  messagingSenderId: "935321621479",
+  appId: "1:935321621479:web:a730596c63e00ecdbce342",
+  measurementId: "G-N9J8NPRJXX"
+};
+
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+const db = getDatabase(app);
+
+// Initial Members Data
+const defaultMembers = [
+  { name: "NELSON KIPTOO", total: 2400, count: 6, act: 85.7, remark: "ME" },
+  { name: "GODWIN KIPLAGAT", total: 1600, count: 7, act: 85.7, remark: "ME" },
+  { name: "DENNIS KIMUTAI", total: 1100, count: 3, act: 40.0, remark: "BE" },
+  { name: "VINCENT KIPROP", total: 1500, count: 6, act: 77.9, remark: "ME" },
+  { name: "CHARLES MELLY", total: 1100, count: 5, act: 60.7, remark: "ME" },
+  { name: "BRIAN KORRIR", total: 3800, count: 5, act: 71.4, remark: "ME" },
+  { name: "ML SAMMY", total: 1100, count: 3, act: 42.9, remark: "BE" },
+  { name: "CALEB KOGO", total: 1700, count: 6, act: 80.0, remark: "ME" },
+  { name: "FAITH CHEPTOO", total: 2400, count: 3, act: 37.1, remark: "BE" },
+  { name: "ENOCK KIPRUTO", total: 500, count: 5, act: 45.0, remark: "BE" },
+  { name: "GARLTON KIPTOO", total: 1500, count: 6, act: 77.1, remark: "ME" },
+  { name: "BRIAN KIPCHIRCHIR", total: 700, count: 3, act: 37.1, remark: "BE" },
+  { name: "KEN SUSMA", total: 4750, count: 5, act: 71.4, remark: "ME" },
+  { name: "ABDI SUSMA", total: 1150, count: 6, act: 69.3, remark: "ME" },
+  { name: "VINTON BOR", total: 900, count: 5, act: 56.4, remark: "ME" },
+  { name: "NICHOLAS KEMEI", total: 1500, count: 6, act: 77.1, remark: "ME" },
+  { name: "COLLINS KEMBOI", total: 300, count: 2, act: 20.7, remark: "BE" },
+  { name: "KEVIN CHUMBA", total: 900, count: 2, act: 25.7, remark: "BE" },
+  { name: "BERNARD BOR", total: 700, count: 4, act: 44.3, remark: "BE" },
+  { name: "MICHAEL KIPLIMO", total: 1100, count: 4, act: 54.3, remark: "ME" },
+  { name: "DENNIS SUSMA", total: 700, count: 4, act: 42.1, remark: "BE" },
+  { name: "MERCY CHESANG", total: 650, count: 3, act: 36.4, remark: "BE" },
+  { name: "BRIAN TERER", total: 1450, count: 4, act: 50.7, remark: "ME" },
+  { name: "FAITH JEPCHUMBA", total: 700, count: 4, act: 44.3, remark: "BE" },
+  { name: "CHILION KIPLAGAT", total: 500, count: 4, act: 39.3, remark: "BE" },
+  { name: "ARON KIPRUTO", total: 750, count: 4, act: 45.7, remark: "BE" },
+  { name: "COLLINS KIPTOO", total: 800, count: 4, act: 46.4, remark: "BE" },
+  { name: "GEORGE SUSMA", total: 800, count: 3, act: 40.0, remark: "BE" },
+  { name: "COLLINS KORIR", total: 1150, count: 5, act: 62.1, remark: "ME" },
+  { name: "COLLINS MIBEI", total: 1000, count: 3, act: 42.9, remark: "BE" },
+  { name: "MATHEW KIRWA", total: 1450, count: 5, act: 67.9, remark: "ME" },
+  { name: "KELVIN KEMEI", total: 1300, count: 5, act: 65.7, remark: "ME" },
+  { name: "JOB SAWE", total: 500, count: 1, act: 14.3, remark: "BE" },
+  { name: "JOSEPH MELI", total: 500, count: 2, act: 25.7, remark: "BE" },
+  { name: "TIMON MARU", total: 700, count: 4, act: 44.3, remark: "BE" },
+  { name: "SHARON KEMEI", total: 1100, count: 4, act: 54.3, remark: "ME" },
+  { name: "VINTON TANUI", total: 1350, count: 5, act: 59.3, remark: "ME" },
+  { name: "LINUS BARNO", total: 500, count: 1, act: 14.3, remark: "BE" },
+  { name: "JOSHUA SITIENEI", total: 500, count: 2, act: 25.7, remark: "BE" },
+  { name: "SHARON SUSMA", total: 550, count: 3, act: 33.6, remark: "BE" },
+  { name: "BRONSON KIPTOO", total: 200, count: 2, act: 18.6, remark: "BE" },
+  { name: "MAUREEN JEPCHUMBA", total: 1000, count: 4, act: 51.4, remark: "ME" },
+  { name: "EMMANUEL KIPSANG", total: 400, count: 1, act: 14.3, remark: "BE" },
+  { name: "SIMON JEMORONG", total: 300, count: 2, act: 20.7, remark: "BE" },
+  { name: "RODGERS CHOGE", total: 800, count: 4, act: 47.1, remark: "BE" },
+  { name: "RAYMOND SEREM", total: 500, count: 2, act: 25.7, remark: "BE" },
+  { name: "MESHACK KIPKOGEI", total: 500, count: 3, act: 30.0, remark: "BE" },
+  { name: "ANDREW KIGEN", total: 700, count: 3, act: 37.1, remark: "BE" },
+  { name: "BRENDA CHERUTO", total: 300, count: 2, act: 21.4, remark: "BE" },
+  { name: "FELIX KIPKOECH", total: 700, count: 3, act: 37.1, remark: "BE" },
+  { name: "SILA NANGO", total: 1200, count: 4, act: 51.4, remark: "ME" },
+  { name: "VALLARY SITIENEI", total: 100, count: 1, act: 9.3, remark: "BE" },
+  { name: "GLORIA SUSMA", total: 400, count: 3, act: 30.7, remark: "BE" },
+  { name: "KIPLAGAT SONGOK", total: 200, count: 1, act: 11.4, remark: "BE" },
+  { name: "SHALEEN JERUTO", total: 2000, count: 1, act: 14.3, remark: "BE" },
+  { name: "THOMAS RONO", total: 700, count: 3, act: 37.1, remark: "BE" },
+  { name: "BONII SUSMA", total: 300, count: 3, act: 27.9, remark: "BE" },
+  { name: "FRANCISCAH KOSGEI", total: 500, count: 3, act: 32.9, remark: "BE" },
+  { name: "TREVOR KIPRUTO", total: 100, count: 1, act: 9.3, remark: "BE" },
+  { name: "MERCY KORIR", total: 200, count: 2, act: 18.6, remark: "BE" },
+  { name: "BILGATE KIPRONO", total: 400, count: 2, act: 22.9, remark: "BE" },
+  { name: "VICTORIA CHEPTOO", total: 600, count: 2, act: 28.6, remark: "BE" },
+  { name: "MAUREEN TIROP", total: 400, count: 2, act: 22.9, remark: "BE" },
+  { name: "CLAXON KIPLIMO", total: 50, count: 1, act: 7.9, remark: "BE" },
+  { name: "ASHLINE JEROBON", total: 750, count: 2, act: 25.0, remark: "BE" },
+  { name: "AMOS KIBET", total: 300, count: 2, act: 20.7, remark: "BE" },
+  { name: "KELVIN KIPNG'ETICH", total: 400, count: 2, act: 22.9, remark: "BE" },
+  { name: "VALLERY CHEPCHUMBA", total: 350, count: 2, act: 22.1, remark: "BE" },
+  { name: "LYNNE JEPCHIRCHIR", total: 200, count: 1, act: 11.4, remark: "BE" },
+  { name: "BRIAN KIPLIMO", total: 150, count: 1, act: 10.7, remark: "BE" },
+  { name: "DICKSON KIPKOECH", total: 200, count: 1, act: 11.4, remark: "BE" },
+  { name: "ALLAN KIPKEMBOI", total: 300, count: 1, act: 14.3, remark: "BE" },
+  { name: "ENOCK SONGOK", total: 200, count: 1, act: 11.4, remark: "BE" },
+  { name: "HILLARY JUMA", total: 150, count: 1, act: 10.7, remark: "BE" },
+  { name: "GLORIA CHEPCHIRCHIR", total: 300, count: 1, act: 14.3, remark: "BE" },
+  { name: "ANNETTE CHEROP", total: 300, count: 1, act: 14.3, remark: "BE" },
+  { name: "CANYSIUS KIPCHUMBA", total: 300, count: 1, act: 14.3, remark: "BE" },
+  { name: "ELI ROP", total: 150, count: 1, act: 10.7, remark: "BE" },
+  { name: "RHIZE KIGEN", total: 250, count: 1, act: 12.9, remark: "BE" },
+  { name: "GEAN KIMUTAI", total: 150, count: 1, act: 10.7, remark: "BE" },
+  { name: "KELVIN KIMELI", total: 0, count: 0, act: 0.0, remark: "BE" },
+  { name: "DENNIS KIPTANUI", total: 0, count: 0, act: 0.0, remark: "BE" },
+  { name: "BRIAN KIPKOECH", total: 0, count: 0, act: 0.0, remark: "BE" },
+  { name: "PETER MARU", total: 0, count: 0, act: 0.0, remark: "BE" },
+  { name: "JOSHUA KIPTARBEI", total: 0, count: 0, act: 0.0, remark: "BE" },
+  { name: "CELESTINE JEBET", total: 0, count: 0, act: 0.0, remark: "BE" }
+];
+
+// Initial Support Cases Data
+const defaultCases = [
+  { name: "KAP-HAJIKWAI", items: [
+    { date: "7/23/2026", member: "CANYSIUS KIPCHUMBA", amount: 300 },
+    { date: "7/23/2026", member: "ELI ROP", amount: 150 },
+    { date: "7/23/2026", member: "RHIZE KIGEN", amount: 250 },
+    { date: "7/23/2026", member: "GEAN KIMUTAI", amount: 150 },
+    { date: "7/23/2026", member: "MERCY CHESANG", amount: 200 },
+    { date: "7/23/2026", member: "ML SAMMY", amount: 300 },
+    { date: "7/23/2026", member: "JOSEPH MELI", amount: 300 },
+    { date: "7/23/2026", member: "CHARLES MELLY", amount: 300 },
+    { date: "7/23/2026", member: "MICHAEL KIPLIMO", amount: 300 },
+    { date: "7/23/2026", member: "BRENDA CHERUTO", amount: 150 },
+    { date: "7/23/2026", member: "ANNETTE CHEROP", amount: 300 },
+    { date: "7/23/2026", member: "GLORIA CHEPCHIRCHIR", amount: 300 },
+    { date: "7/23/2026", member: "DENNIS SUSMA", amount: 100 },
+    { date: "7/23/2026", member: "HILLARY JUMA", amount: 150 },
+    { date: "7/23/2026", member: "SHARON SUSMA", amount: 200 },
+    { date: "7/23/2026", member: "KELVIN KIPNG'ETICH", amount: 200 },
+    { date: "7/23/2026", member: "ENOCK SONGOK", amount: 200 },
+    { date: "7/23/2026", member: "ALLAN KIPKEMBOI", amount: 300 },
+    { date: "7/23/2026", member: "BRONSON KIPTOO", amount: 100 },
+    { date: "7/23/2026", member: "BERNARD BOR", amount: 200 },
+    { date: "7/23/2026", member: "BILGATE KIPRONO", amount: 200 },
+    { date: "7/23/2026", member: "VICTORIA CHEPTOO", amount: 300 },
+    { date: "7/23/2026", member: "FAITH JEPCHUMBA", amount: 300 },
+    { date: "7/23/2026", member: "RODGERS CHOGE", amount: 300 },
+    { date: "7/23/2026", member: "MAUREEN JEPCHUMBA", amount: 300 },
+    { date: "7/23/2026", member: "MAUREEN TIROP", amount: 200 },
+    { date: "7/23/2026", member: "ASHLINE JEROBON", amount: 300 },
+    { date: "7/23/2026", member: "ANDREW KIGEN", amount: 300 },
+    { date: "7/23/2026", member: "MATHEW KIRWA", amount: 300 },
+    { date: "7/23/2026", member: "SILA NANGO", amount: 500 },
+    { date: "7/23/2026", member: "COLLINS MIBEI", amount: 300 },
+    { date: "7/23/2026", member: "VINTON BOR", amount: 300 },
+    { date: "7/23/2026", member: "AMOS KIBET", amount: 200 },
+    { date: "7/23/2026", member: "VINTON TANUI", amount: 300 },
+    { date: "7/23/2026", member: "BRIAN TERER", amount: 200 },
+    { date: "7/23/2026", member: "SHARON KEMEI", amount: 300 },
+    { date: "7/23/2026", member: "NICHOLAS KEMEI", amount: 300 },
+    { date: "7/23/2026", member: "ARON KIPRUTO", amount: 100 },
+    { date: "7/23/2026", member: "DICKSON KIPKOECH", amount: 200 },
+    { date: "7/23/2026", member: "VALLERY CHEPCHUMBA", amount: 200 },
+    { date: "7/23/2026", member: "VINCENT KIPROP", amount: 300 },
+    { date: "7/23/2026", member: "VINTON TANUI", amount: 300 },
+    { date: "7/23/2026", member: "BRIAN KIPLIMO", amount: 150 },
+    { date: "7/23/2026", member: "DENNIS SUSMA", amount: 100 },
+    { date: "7/23/2026", member: "CHILION KIPLAGAT", amount: 100 },
+    { date: "7/23/2026", member: "ENOCK KIPRUTO", amount: 100 },
+    { date: "7/23/2026", member: "BONII SUSMA", amount: 100 },
+    { date: "7/23/2026", member: "GLORIA SUSMA", amount: 150 },
+    { date: "7/23/2026", member: "LYNNE JEPCHIRCHIR", amount: 200 },
+    { date: "7/23/2026", member: "FELIX KIPKOECH", amount: 200 },
+    { date: "7/23/2026", member: "KELVIN KEMEI", amount: 300 },
+    { date: "7/23/2026", member: "COLLINS KIPTOO", amount: 200 },
+    { date: "7/23/2026", member: "GEORGE SUSMA", amount: 300 },
+    { date: "7/23/2026", member: "NELSON KIPTOO", amount: 300 },
+    { date: "7/23/2026", member: "RAYMOND SEREM", amount: 300 },
+    { date: "7/23/2026", member: "ABDI SUSMA", amount: 300 },
+    { date: "7/23/2026", member: "ASHLINE JEROBON", amount: 300 },
+    { date: "7/23/2026", member: "FRANCISCAH KOSGEI", amount: 300 },
+    { date: "7/23/2026", member: "KEN SUSMA", amount: 300 },
+    { date: "7/23/2026", member: "GARLTON KIPTOO", amount: 300 },
+    { date: "7/23/2026", member: "COLLINS KORIR", amount: 300 },
+    { date: "7/23/2026", member: "BRIAN KIPCHIRCHIR", amount: 300 },
+    { date: "7/23/2026", member: "GODWIN KIPLAGAT", amount: 300 },
+    { date: "7/23/2026", member: "CALEB KOGO", amount: 300 }
+  ]},
+  { name: "KAP-SING", items: [
+    { date: "7/23/2026", member: "ENOCK KIPRUTO", amount: 50 },
+    { date: "7/23/2026", member: "SHARON KEMEI", amount: 200 },
+    { date: "7/23/2026", member: "VALLERY CHEPCHUMBA", amount: 150 },
+    { date: "7/23/2026", member: "ENOCK KIPRUTO", amount: 50 },
+    { date: "7/23/2026", member: "ANDREW KIGEN", amount: 200 },
+    { date: "7/23/2026", member: "KELVIN KIPNG'ETICH", amount: 200 },
+    { date: "7/23/2026", member: "MAUREEN JEPCHUMBA", amount: 200 },
+    { date: "7/23/2026", member: "TIMON MARU", amount: 100 },
+    { date: "7/23/2026", member: "BRIAN KORRIR", amount: 1000 },
+    { date: "7/23/2026", member: "FELIX KIPKOECH", amount: 200 },
+    { date: "7/23/2026", member: "COLLINS KORIR", amount: 200 },
+    { date: "7/23/2026", member: "RODGERS CHOGE", amount: 150 },
+    { date: "7/23/2026", member: "AMOS KIBET", amount: 100 },
+    { date: "7/23/2026", member: "KEN SUSMA", amount: 500 },
+    { date: "7/23/2026", member: "SILA NANGO", amount: 200 },
+    { date: "7/23/2026", member: "CALEB KOGO", amount: 200 },
+    { date: "7/23/2026", member: "BRIAN KIPCHIRCHIR", amount: 200 },
+    { date: "7/23/2026", member: "FRANCISCAH KOSGEI", amount: 100 },
+    { date: "7/23/2026", member: "MATHEW KIRWA", amount: 150 },
+    { date: "7/23/2026", member: "ARON KIPRUTO", amount: 100 },
+    { date: "7/23/2026", member: "ABDI SUSMA", amount: 150 },
+    { date: "7/23/2026", member: "THOMAS RONO", amount: 200 },
+    { date: "7/23/2026", member: "NELSON KIPTOO", amount: 500 },
+    { date: "7/23/2026", member: "DENNIS SUSMA", amount: 100 },
+    { date: "7/23/2026", member: "ML SAMMY", amount: 300 },
+    { date: "7/23/2026", member: "BRIAN TERER", amount: 800 },
+    { date: "7/23/2026", member: "KELVIN KEMEI", amount: 200 },
+    { date: "7/23/2026", member: "CHARLES MELLY", amount: 100 },
+    { date: "7/23/2026", member: "COLLINS KIPTOO", amount: 200 },
+    { date: "7/23/2026", member: "ASHLINE JEROBON", amount: 150 },
+    { date: "7/23/2026", member: "CLAXON KIPLIMO", amount: 50 },
+    { date: "7/23/2026", member: "VINTON TANUI", amount: 200 },
+    { date: "7/23/2026", member: "VINCENT KIPROP", amount: 250 },
+    { date: "7/23/2026", member: "MERCY KORIR", amount: 100 },
+    { date: "7/23/2026", member: "MESHACK KIPKOGEI", amount: 100 },
+    { date: "7/23/2026", member: "CHILION KIPLAGAT", amount: 100 },
+    { date: "7/23/2026", member: "VINTON BOR", amount: 100 },
+    { date: "7/23/2026", member: "MERCY CHESANG", amount: 150 },
+    { date: "7/23/2026", member: "MAUREEN TIROP", amount: 200 },
+    { date: "7/23/2026", member: "MICHAEL KIPLIMO", amount: 200 },
+    { date: "7/23/2026", member: "GARLTON KIPTOO", amount: 200 },
+    { date: "7/23/2026", member: "GODWIN KIPLAGAT", amount: 200 },
+    { date: "7/23/2026", member: "NICHOLAS KEMEI", amount: 200 }
+  ]},
+  { name: "KAP-MATWEK", items: [
+    { date: "7/23/2026", member: "BONII SUSMA", amount: 100 },
+    { date: "7/23/2026", member: "GLORIA SUSMA", amount: 150 },
+    { date: "7/23/2026", member: "ABDI SUSMA", amount: 150 },
+    { date: "7/23/2026", member: "MESHACK KIPKOGEI", amount: 100 },
+    { date: "7/23/2026", member: "NELSON KIPTOO", amount: 300 },
+    { date: "7/23/2026", member: "THOMAS RONO", amount: 300 },
+    { date: "7/23/2026", member: "COLLINS KORIR", amount: 150 },
+    { date: "7/23/2026", member: "BRIAN TERER", amount: 150 },
+    { date: "7/23/2026", member: "BERNARD BOR", amount: 100 },
+    { date: "7/23/2026", member: "NICHOLAS KEMEI", amount: 300 },
+    { date: "7/23/2026", member: "KELVIN KEMEI", amount: 300 },
+    { date: "7/23/2026", member: "MATHEW KIRWA", amount: 400 },
+    { date: "7/23/2026", member: "ARON KIPRUTO", amount: 250 },
+    { date: "7/23/2026", member: "MAUREEN JEPCHUMBA", amount: 200 },
+    { date: "7/23/2026", member: "CHARLES MELLY", amount: 200 },
+    { date: "7/23/2026", member: "VICTORIA CHEPTOO", amount: 300 },
+    { date: "7/23/2026", member: "BILGATE KIPRONO", amount: 200 },
+    { date: "7/23/2026", member: "SILA NANGO", amount: 300 },
+    { date: "7/23/2026", member: "MERCY KORIR", amount: 100 },
+    { date: "7/23/2026", member: "FAITH JEPCHUMBA", amount: 200 },
+    { date: "7/23/2026", member: "CALEB KOGO", amount: 300 },
+    { date: "7/23/2026", member: "TREVOR KIPRUTO", amount: 100 },
+    { date: "7/23/2026", member: "BRIAN KORRIR", amount: 1000 },
+    { date: "7/23/2026", member: "VINTON TANUI", amount: 200 },
+    { date: "7/23/2026", member: "VINCENT KIPROP", amount: 200 },
+    { date: "7/23/2026", member: "SHARON SUSMA", amount: 100 },
+    { date: "7/23/2026", member: "MESHACK KIPKOGEI", amount: 200 },
+    { date: "7/23/2026", member: "GARLTON KIPTOO", amount: 300 },
+    { date: "7/23/2026", member: "TIMON MARU", amount: 300 },
+    { date: "7/23/2026", member: "SHARON KEMEI", amount: 300 },
+    { date: "7/23/2026", member: "GODWIN KIPLAGAT", amount: 200 },
+    { date: "7/23/2026", member: "MICHAEL KIPLIMO", amount: 300 }
+  ]},
+  { name: "KAP-KUNGUT", items: [
+    { date: "7/23/2026", member: "RODGERS CHOGE", amount: 150 },
+    { date: "7/23/2026", member: "KEVIN CHUMBA", amount: 200 },
+    { date: "7/23/2026", member: "DENNIS KIMUTAI", amount: 200 },
+    { date: "7/23/2026", member: "FRANCISCAH KOSGEI", amount: 100 },
+    { date: "7/23/2026", member: "BONII SUSMA", amount: 100 },
+    { date: "7/23/2026", member: "KEN SUSMA", amount: 2450 },
+    { date: "7/23/2026", member: "TIMON MARU", amount: 100 },
+    { date: "7/23/2026", member: "CALEB KOGO", amount: 300 },
+    { date: "7/23/2026", member: "THOMAS RONO", amount: 200 },
+    { date: "7/23/2026", member: "COLLINS MIBEI", amount: 300 },
+    { date: "7/23/2026", member: "SHALEEN JERUTO", amount: 2000 },
+    { date: "7/23/2026", member: "KIPLAGAT SONGOK", amount: 200 },
+    { date: "7/23/2026", member: "DENNIS SUSMA", amount: 100 },
+    { date: "7/23/2026", member: "VINTON TANUI", amount: 150 },
+    { date: "7/23/2026", member: "VINCENT KIPROP", amount: 150 },
+    { date: "7/23/2026", member: "BERNARD BOR", amount: 100 },
+    { date: "7/23/2026", member: "FAITH JEPCHUMBA", amount: 100 },
+    { date: "7/23/2026", member: "ENOCK KIPRUTO", amount: 100 },
+    { date: "7/23/2026", member: "COLLINS KIPTOO", amount: 100 },
+    { date: "7/23/2026", member: "GARLTON KIPTOO", amount: 200 },
+    { date: "7/23/2026", member: "MATHEW KIRWA", amount: 300 },
+    { date: "7/23/2026", member: "GLORIA SUSMA", amount: 100 },
+    { date: "7/23/2026", member: "VINTON BOR", amount: 100 },
+    { date: "7/23/2026", member: "KEVIN CHUMBA", amount: 200 },
+    { date: "7/23/2026", member: "VALLARY SITIENEI", amount: 100 },
+    { date: "7/23/2026", member: "ABDI SUSMA", amount: 150 },
+    { date: "7/23/2026", member: "JOSHUA SITIENEI", amount: 200 },
+    { date: "7/23/2026", member: "SILA NANGO", amount: 200 },
+    { date: "7/23/2026", member: "CHILION KIPLAGAT", amount: 100 },
+    { date: "7/23/2026", member: "GODWIN KIPLAGAT", amount: 200 },
+    { date: "7/23/2026", member: "BRIAN KORRIR", amount: 300 },
+    { date: "7/23/2026", member: "FELIX KIPKOECH", amount: 300 },
+    { date: "7/23/2026", member: "COLLINS KORIR", amount: 300 },
+    { date: "7/23/2026", member: "SIMON JEMORONG", amount: 100 },
+    { date: "7/23/2026", member: "KELVIN KEMEI", amount: 200 },
+    { date: "7/23/2026", member: "NICHOLAS KEMEI", amount: 200 },
+    { date: "7/23/2026", member: "GEORGE SUSMA", amount: 200 }
+  ]},
+  { name: "KAP-NANGO", items: [
+    { date: "7/23/2026", member: "BRENDA CHERUTO", amount: 150 },
+    { date: "7/23/2026", member: "ANDREW KIGEN", amount: 200 },
+    { date: "7/23/2026", member: "MESHACK KIPKOGEI", amount: 100 },
+    { date: "7/23/2026", member: "KEN SUSMA", amount: 500 },
+    { date: "7/23/2026", member: "GARLTON KIPTOO", amount: 300 },
+    { date: "7/23/2026", member: "RAYMOND SEREM", amount: 200 },
+    { date: "7/23/2026", member: "NICHOLAS KEMEI", amount: 200 },
+    { date: "7/23/2026", member: "RODGERS CHOGE", amount: 200 },
+    { date: "7/23/2026", member: "SIMON JEMORONG", amount: 200 },
+    { date: "7/23/2026", member: "EMMANUEL KIPSANG", amount: 400 },
+    { date: "7/23/2026", member: "MAUREEN JEPCHUMBA", amount: 300 },
+    { date: "7/23/2026", member: "BRONSON KIPTOO", amount: 100 },
+    { date: "7/23/2026", member: "SHARON SUSMA", amount: 250 },
+    { date: "7/23/2026", member: "JOSHUA SITIENEI", amount: 300 },
+    { date: "7/23/2026", member: "LINUS BARNO", amount: 500 },
+    { date: "7/23/2026", member: "VINTON TANUI", amount: 200 },
+    { date: "7/23/2026", member: "SHARON KEMEI", amount: 300 },
+    { date: "7/23/2026", member: "TIMON MARU", amount: 200 },
+    { date: "7/23/2026", member: "JOSEPH MELI", amount: 200 },
+    { date: "7/23/2026", member: "VINTON BOR", amount: 300 },
+    { date: "7/23/2026", member: "JOB SAWE", amount: 500 },
+    { date: "7/23/2026", member: "KELVIN KEMEI", amount: 300 },
+    { date: "7/23/2026", member: "MATHEW KIRWA", amount: 300 },
+    { date: "7/23/2026", member: "COLLINS KEMBOI", amount: 200 },
+    { date: "7/23/2026", member: "COLLINS MIBEI", amount: 400 },
+    { date: "7/23/2026", member: "ENOCK KIPRUTO", amount: 100 },
+    { date: "7/23/2026", member: "VINCENT KIPROP", amount: 300 },
+    { date: "7/23/2026", member: "COLLINS KORIR", amount: 200 },
+    { date: "7/23/2026", member: "CALEB KOGO", amount: 400 },
+    { date: "7/23/2026", member: "BRIAN KORRIR", amount: 500 },
+    { date: "7/23/2026", member: "GEORGE SUSMA", amount: 300 },
+    { date: "7/23/2026", member: "COLLINS KIPTOO", amount: 300 },
+    { date: "7/23/2026", member: "ARON KIPRUTO", amount: 300 },
+    { date: "7/23/2026", member: "FAITH CHEPTOO", amount: 200 },
+    { date: "7/23/2026", member: "CHILION KIPLAGAT", amount: 200 },
+    { date: "7/23/2026", member: "NELSON KIPTOO", amount: 300 },
+    { date: "7/23/2026", member: "DENNIS KIMUTAI", amount: 400 },
+    { date: "7/23/2026", member: "CHARLES MELLY", amount: 300 },
+    { date: "7/23/2026", member: "FAITH JEPCHUMBA", amount: 100 },
+    { date: "7/23/2026", member: "BRIAN TERER", amount: 300 },
+    { date: "7/23/2026", member: "ABDI SUSMA", amount: 200 },
+    { date: "7/23/2026", member: "MERCY CHESANG", amount: 300 },
+    { date: "7/23/2026", member: "DENNIS SUSMA", amount: 300 },
+    { date: "7/23/2026", member: "MICHAEL KIPLIMO", amount: 300 },
+    { date: "7/23/2026", member: "BERNARD BOR", amount: 300 },
+    { date: "7/23/2026", member: "KEVIN CHUMBA", amount: 500 },
+    { date: "7/23/2026", member: "GODWIN KIPLAGAT", amount: 300 }
+  ]},
+  { name: "KAP-TATKEI", items: [
+    { date: "7/23/2026", member: "NICHOLAS KEMEI", amount: 300 },
+    { date: "7/23/2026", member: "VINTON BOR", amount: 100 },
+    { date: "7/23/2026", member: "COLLINS KEMBOI", amount: 100 },
+    { date: "7/23/2026", member: "KEN SUSMA", amount: 1000 },
+    { date: "7/23/2026", member: "ABDI SUSMA", amount: 200 },
+    { date: "7/23/2026", member: "GODWIN KIPLAGAT", amount: 200 },
+    { date: "7/23/2026", member: "NELSON KIPTOO", amount: 500 },
+    { date: "7/23/2026", member: "FAITH CHEPTOO", amount: 2000 }
+  ]},
+  { name: "KAP-SUSMA", items: [
+    { date: "7/23/2026", member: "BRIAN KIPCHIRCHIR", amount: 200 },
+    { date: "7/23/2026", member: "GARLTON KIPTOO", amount: 200 },
+    { date: "7/23/2026", member: "ENOCK KIPRUTO", amount: 100 },
+    { date: "7/23/2026", member: "FAITH CHEPTOO", amount: 200 },
+    { date: "7/23/2026", member: "CALEB KOGO", amount: 200 },
+    { date: "7/23/2026", member: "ML SAMMY", amount: 500 },
+    { date: "7/23/2026", member: "BRIAN KORRIR", amount: 1000 },
+    { date: "7/23/2026", member: "CHARLES MELLY", amount: 200 },
+    { date: "7/23/2026", member: "VINCENT KIPROP", amount: 300 },
+    { date: "7/23/2026", member: "DENNIS KIMUTAI", amount: 500 },
+    { date: "7/23/2026", member: "GODWIN KIPLAGAT", amount: 200 },
+    { date: "7/23/2026", member: "NELSON KIPTOO", amount: 500 }
+  ]}
+];
+
+let summaryMembers = [];
+let supportCases = [];
+let selectedCase = "KAP-SING";
+const EDIT_PASSWORD = 'Godii1411';
+let unlocked = false;
+let editingMemberIndex = -1;
+let editingCaseItemIndex = -1;
+
+// Realtime Firebase Listener
+const groupRef = ref(db, 'groupTracker');
+onValue(groupRef, (snapshot) => {
+  const data = snapshot.val();
+  if (data) {
+    summaryMembers = data.members || [];
+    supportCases = data.cases || [];
+    if (!supportCases.some(c => c.name === selectedCase) && supportCases.length > 0) {
+      selectedCase = supportCases[0].name;
+    }
+    render();
+  } else {
+    // Initialize DB with default data if empty
+    saveToFirebase(defaultMembers, defaultCases);
+  }
+});
+
+function saveToFirebase(mList = summaryMembers, cList = supportCases) {
+  set(ref(db, 'groupTracker'), {
+    members: mList,
+    cases: cList
+  });
+}
+
+function render(){
+  summaryMembers.sort((a, b) => b.act - a.act);
+
+  // 1. Render Group Summary Table
+  let rows = summaryMembers.map((m, i) => {
+    let isEditing = (editingMemberIndex === i && unlocked);
+    let nameCell = isEditing 
+      ? `<input id="editMemName_${i}" class="inline-input" value="${m.name}">` 
+      : m.name;
+    let amountCell = isEditing 
+      ? `<input id="editMemAmount_${i}" type="number" class="inline-input" value="${m.total}">` 
+      : `KES ${m.total.toLocaleString()}`;
+    let actionCell = unlocked ? (
+      isEditing 
+        ? `<button class="btn-save" onclick="saveMember(${i})">Save</button>` 
+        : `<button class="btn-edit" onclick="editMember(${i})">Edit</button>`
+    ) : '-';
+
+    return `
+      <tr>
+        <td>${i+1}</td>
+        <td>${nameCell}</td>
+        <td>${amountCell}</td>
+        <td>${m.count}</td>
+        <td>${m.act.toFixed(1)}% <div style="background:#eee; border-radius:4px"><div class="active-bar" style="width:${Math.min(m.act,100)}%"></div></div></td>
+        <td>${m.remark}</td>
+        <td>${actionCell}</td>
+      </tr>
+    `;
+  }).join('');
+
+  document.getElementById('membersTable').innerHTML = 
+    `<tr><th>No.</th><th>Member</th><th>Total Contributed</th><th>Times Contributed</th><th>Activeness</th><th>remarks</th><th>Action</th></tr>` + rows;
+
+  document.getElementById('totalGroup').innerText = summaryMembers.reduce((s,m)=>s+m.total, 0).toLocaleString();
+  document.getElementById('totalCount').innerText = supportCases.length;
+
+  let memberSelect = document.getElementById('contribMember');
+  if (memberSelect) memberSelect.innerHTML = summaryMembers.map(m=>`<option>${m.name}</option>`).join('');
+
+  let purposeSelect = document.getElementById('purposeSelect');
+  if (purposeSelect) purposeSelect.innerHTML = supportCases.map(c=>`<option value="${c.name}">${c.name}</option>`).join('');
+
+  // 2. Render Support Cases Chart
+  let caseTotals = supportCases.map(c => ({
+    name: c.name,
+    amount: (c.items || []).reduce((sum, item) => sum + Number(item.amount), 0),
+    items: c.items || []
+  }));
+
+  let maxVal = Math.max(...caseTotals.map(c => c.amount), 1);
+  let chartHtml = caseTotals.map(c => {
+    let pct = (c.amount / maxVal) * 100;
+    return `
+      <div class="item">
+        <span class="label">${c.name}</span>
+        <div class="barWrap"><div class="bar" style="width:${pct}%"></div></div>
+        <span class="val">KES ${c.amount.toLocaleString()}</span>
+      </div>
+    `;
+  }).join('');
+  document.getElementById('casesChartContainer').innerHTML = chartHtml;
+
+  // 3. Render Support Case Tabs
+  let tabsHtml = caseTotals.map(c => `
+    <button class="purpose-tab ${c.name === selectedCase ? 'selected' : ''}" onclick="selectCase('${c.name}')">
+      ${c.name} (KES ${c.amount.toLocaleString()})
+    </button>
+  `).join('');
+  document.getElementById('casesTabsContainer').innerHTML = tabsHtml;
+
+  // 4. Render Selected Case Itemized Breakdown
+  let currentCaseObj = caseTotals.find(c => c.name === selectedCase);
+  if (currentCaseObj && currentCaseObj.items.length > 0) {
+    let itemRows = currentCaseObj.items.map((item, idx) => {
+      let isEditing = (editingCaseItemIndex === idx && unlocked);
+      let nameCell = isEditing 
+        ? `<input id="editCaseMemName_${idx}" class="inline-input" value="${item.member}">` 
+        : item.member;
+      let amountCell = isEditing 
+        ? `<input id="editCaseAmount_${idx}" type="number" class="inline-input" value="${item.amount}">` 
+        : `KES ${item.amount.toLocaleString()}`;
+      let actionCell = unlocked ? (
+        isEditing 
+          ? `<button class="btn-save" onclick="saveCaseItem('${selectedCase}', ${idx})">Save</button>` 
+          : `<button class="btn-edit" onclick="editCaseItem(${idx})">Edit</button>`
+      ) : '-';
+
+      return `
+        <tr>
+          <td>${idx + 1}</td>
+          <td>${item.date}</td>
+          <td>${nameCell}</td>
+          <td>${amountCell}</td>
+          <td>${actionCell}</td>
+        </tr>
+      `;
+    }).join('');
+
+    document.getElementById('casesContainer').innerHTML = `
+      <h4>${currentCaseObj.name} Details (Total: KES ${currentCaseObj.amount.toLocaleString()})</h4>
+      <table>
+        <tr><th>No.</th><th>Date</th><th>Member</th><th>Amount</th><th>Action</th></tr>
+        ${itemRows}
+      </table>
+    `;
+  } else {
+    document.getElementById('casesContainer').innerHTML = `<p>No individual itemized records logged for ${selectedCase} yet.</p>`;
+  }
+}
+
+function unlockApp(){
+  let pw = document.getElementById('passwordInput').value.trim();
+  if(pw === EDIT_PASSWORD){
+    unlocked = true;
+    document.getElementById('unlockMessage').innerText = 'Unlocked!';
+    document.getElementById('unlockMessage').style.color = 'green';
+    document.querySelectorAll('[data-edit-card]').forEach(el => el.style.display = 'block');
+    render();
+  } else {
+    document.getElementById('unlockMessage').innerText = 'Wrong password';
+    document.getElementById('unlockMessage').style.color = 'red';
+  }
+}
+
+function addSupportCase(){
+  let caseInput = document.getElementById('newCaseName');
+  let caseName = caseInput.value.trim().toUpperCase();
+  if(!caseName) {
+    alert("Please enter a valid case name.");
+    return;
+  }
+  if(supportCases.some(c => c.name === caseName)) {
+    alert("This case already exists!");
+    return;
+  }
+  supportCases.push({ name: caseName, items: [] });
+  selectedCase = caseName;
+  caseInput.value = '';
+  saveToFirebase();
+}
+
+function editMember(index){
+  editingMemberIndex = index;
+  render();
+}
+
+function saveMember(index){
+  let nameVal = document.getElementById(`editMemName_${index}`).value.trim();
+  let amtVal = parseFloat(document.getElementById(`editMemAmount_${index}`).value);
+  if(nameVal) summaryMembers[index].name = nameVal;
+  if(!isNaN(amtVal)) summaryMembers[index].total = amtVal;
+  editingMemberIndex = -1;
+  saveToFirebase();
+}
+
+function editCaseItem(index){
+  editingCaseItemIndex = index;
+  render();
+}
+
+function saveCaseItem(caseName, index){
+  let targetCase = supportCases.find(c => c.name === caseName);
+  if(targetCase && targetCase.items && targetCase.items[index]){
+    let nameVal = document.getElementById(`editCaseMemName_${index}`).value.trim();
+    let amtVal = parseFloat(document.getElementById(`editCaseAmount_${index}`).value);
+    if(nameVal) targetCase.items[index].member = nameVal;
+    if(!isNaN(amtVal)) targetCase.items[index].amount = amtVal;
+  }
+  editingCaseItemIndex = -1;
+  saveToFirebase();
+}
+
+function addContribution(){
+  let mName = document.getElementById('contribMember').value;
+  let amt = parseFloat(document.getElementById('amount').value);
+  let purpose = document.getElementById('purposeSelect').value;
+  if(!mName || isNaN(amt) || amt <= 0 || !purpose) {
+    alert("Please fill all contribution details properly.");
+    return;
+  }
+
+  let targetCase = supportCases.find(c => c.name === purpose);
+  let todayStr = new Date().toLocaleDateString('en-US');
+  if(targetCase){
+    if(!targetCase.items) targetCase.items = [];
+    targetCase.items.push({ date: todayStr, member: mName, amount: amt });
+  }
+
+  let memberObj = summaryMembers.find(m => m.name === mName);
+  if(memberObj){
+    memberObj.total += amt;
+    memberObj.count += 1;
+  }
+
+  document.getElementById('amount').value = '';
+  saveToFirebase();
+}
+
+function addMember(){
+  let nameInput = document.getElementById('memberName');
+  let newName = nameInput.value.trim().toUpperCase();
+  if(!newName) return;
+  if(summaryMembers.some(m => m.name === newName)){
+    alert("Member already exists!");
+    return;
+  }
+  summaryMembers.push({ name: newName, total: 0, count: 0, act: 0.0, remark: "BE" });
+  nameInput.value = '';
+  saveToFirebase();
+}
+
+window.selectCase = function(caseName) {
+  selectedCase = caseName;
+  editingCaseItemIndex = -1;
+  render();
+};
+
+window.unlockApp = unlockApp;
+window.addSupportCase = addSupportCase;
+window.editMember = editMember;
+window.saveMember = saveMember;
+window.editCaseItem = editCaseItem;
+window.saveCaseItem = saveCaseItem;
+window.addContribution = addContribution;
+window.addMember = addMember;
+</script>
+</body>
+</html>
